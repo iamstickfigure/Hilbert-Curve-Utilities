@@ -1,5 +1,8 @@
 from graphics import *
 # https://en.wikipedia.org/wiki/Hilbert_curve
+#
+# Based on Python 2.7
+# Requires graphics.py and package python-tk
 
 
 def point_to_d(point, n):
