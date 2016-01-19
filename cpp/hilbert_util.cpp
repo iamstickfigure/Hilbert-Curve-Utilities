@@ -49,25 +49,41 @@ void d2xy(int n, int d, int *x, int *y) {
     }
 }
 
+std::vector<std::pair<int, int>> generate() {
+    std::vector<std::pair<int, int>> hilbert;
+    int n = 35;
+    int length = 4095;
+    int x, y;
+
+    for(int d = 0; d < length; d++) {
+        d2xy(n, d, &x, &y);
+        hilbert.push_back(std::make_pair(x, y));
+    }
+    return hilbert;
+}
+
+void draw(std::vector<std::pair<int, int>>& curve) {
+    int n = 35;
+    int length = 4095;
+    int scale = 5;
+    int left=100,top=100;
+
+    for(int d = 0; d < curve.size()-1; d++) {
+//        setcolor(d*16 / length);
+        setcolor(d % 16 + 1);
+        line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale);
+    }
+}
+
 int main()
 {
     int gd = DETECT,gm,left=100,top=100;
     initgraph(&gd,&gm,NULL);
 
-    int n = 35;
-    int length = 4095;
-    int scale = 1;
-    int x1, y1, x2, y2;
+    std::vector<std::pair<int, int>> curve = generate();
+    draw(curve);
 
-    for(int d = 0; d < length; d++) {
-//        setcolor(d*16 / length);
-        setcolor(d % 16);
-        d2xy(n, d, &x1, &y1);
-        d2xy(n, d+1, &x2, &y2);
-        line(left + x1 * scale, top + y1 * scale, left + x2 * scale, top + y2 * scale);
-    }
-
-    delay(5000);
+    delay(50000);
     closegraph();
     return 0;
 }
