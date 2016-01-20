@@ -3,6 +3,7 @@ project(Hilbert-Curve-Utilities)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 include_directories("/usr/local/include")
+#include_directories("/usr/local/include /usr/include")
 #add_library(libgraph /usr/local/include/graphics.h)
 
 set(SOURCE_FILES cpp/hilbert_util.cpp)

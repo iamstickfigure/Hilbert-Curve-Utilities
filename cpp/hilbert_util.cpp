@@ -1,5 +1,8 @@
 #include<graphics.h>
 #include<vector>
+//#include<CImg.h>
+#include "CImg.h"
+using namespace cimg_library;
 
 /*
  * https://en.wikipedia.org/wiki/Hilbert_curve
@@ -66,24 +69,34 @@ void draw(std::vector<std::pair<int, int>>& curve) {
     int n = 35;
     int length = 4095;
     int scale = 5;
-    int left=100,top=100;
-
+    int left=50,top=50;
+    CImg<unsigned char> image("Pubic_Leiss.jpg"), visu(500,400,1,3,0);
+    const unsigned char color[] = { 255,128,64 };
     for(int d = 0; d < curve.size()-1; d++) {
-//        setcolor(d*16 / length);
-        setcolor(d % 16 + 1);
-        line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale);
+//        const unsigned char color[] = { 255,255,255 };
+        visu.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale, color);
     }
+    CImgDisplay draw_disp(visu);
+
+    while (!draw_disp.is_closed()) {
+        draw_disp.wait();
+    }
+//    for(int d = 0; d < curve.size()-1; d++) {
+////        setcolor(d*16 / length);
+//        setcolor(d % 16 + 1);
+//        line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale);
+//    }
 }
 
 int main()
 {
-    int gd = DETECT,gm,left=100,top=100;
-    initgraph(&gd,&gm,NULL);
+//    int gd = DETECT,gm,left=100,top=100;
+//    initgraph(&gd,&gm,NULL);
 
     std::vector<std::pair<int, int>> curve = generate();
     draw(curve);
 
-    delay(50000);
-    closegraph();
+//    delay(50000);
+//    closegraph();
     return 0;
 }
