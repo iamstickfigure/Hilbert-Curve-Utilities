@@ -7,6 +7,8 @@ using namespace cimg_library;
 /*
  * https://en.wikipedia.org/wiki/Hilbert_curve
  *
+ * Compile with:
+ * g++11 hilbert_util.cpp -o hilbert_util -O2 -L/usr/X11R6/lib -lm -lpthread -lX11
  */
 
 //rotate/flip a quadrant appropriately
@@ -52,7 +54,7 @@ void d2xy(int n, int d, int *x, int *y) {
 
 std::vector<std::pair<int, int>> generate() {
     std::vector<std::pair<int, int>> hilbert;
-    int nlog = 8;
+    int nlog = 9;
     int n = (int)pow(2, nlog);
     int length = n*n;
     int x, y;
@@ -97,12 +99,12 @@ void colorbar(int d, int max, unsigned char (&color)[3]) {
 
 void draw(std::vector<std::pair<int, int>>& curve) {
     int scale = 1;
-    int left=10,top=10;
-    CImg<unsigned char> image(400,400,1,3,0);
+    int left=0,top=0;
+    CImg<unsigned char> image("square_leiss.jpg");//400,400,1,3,0);
     for(int d = 0; d < curve.size()-1; d++) {
         unsigned char color[3] = {0, 0, 0};
         colorbar(d, curve.size(), color);
-        image.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale, color);
+        image.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale, color, 0.5);
     }
     CImgDisplay draw_disp(image);
 
@@ -111,8 +113,7 @@ void draw(std::vector<std::pair<int, int>>& curve) {
     }
 }
 
-int main()
-{
+int main() {
     std::vector<std::pair<int, int>> curve = generate();
     draw(curve);
 
