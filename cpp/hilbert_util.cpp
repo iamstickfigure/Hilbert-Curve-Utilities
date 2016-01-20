@@ -1,4 +1,5 @@
 #include<vector>
+#include<math.h>
 //#include<CImg.h>
 #include "CImg.h"
 using namespace cimg_library;
@@ -51,8 +52,9 @@ void d2xy(int n, int d, int *x, int *y) {
 
 std::vector<std::pair<int, int>> generate() {
     std::vector<std::pair<int, int>> hilbert;
-    int n = 35;
-    int length = 4095;
+    int nlog = 8;
+    int n = (int)pow(2, nlog);
+    int length = n*n;
     int x, y;
 
     for(int d = 0; d < length; d++) {
@@ -94,9 +96,7 @@ void colorbar(int d, int max, unsigned char (&color)[3]) {
 }
 
 void draw(std::vector<std::pair<int, int>>& curve) {
-    int n = 35;
-    int length = 4095;
-    int scale = 3;
+    int scale = 1;
     int left=10,top=10;
     CImg<unsigned char> image(400,400,1,3,0);
     for(int d = 0; d < curve.size()-1; d++) {
