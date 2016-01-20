@@ -1,4 +1,3 @@
-#include<graphics.h>
 #include<vector>
 //#include<CImg.h>
 #include "CImg.h"
@@ -7,8 +6,6 @@ using namespace cimg_library;
 /*
  * https://en.wikipedia.org/wiki/Hilbert_curve
  *
- * The only documentation of libgraph that I could find:
- * http://www.programmingsimplified.com/c/graphics.h
  */
 
 //rotate/flip a quadrant appropriately
@@ -65,38 +62,59 @@ std::vector<std::pair<int, int>> generate() {
     return hilbert;
 }
 
+// http://stackoverflow.com/questions/2374959/algorithm-to-convert-any-positive-integer-to-an-rgb-value
+// Based off of the graph provided.
+void colorbar(int d, int max, unsigned char (&color)[3]) {
+    int interval = max/8;
+    if(d < interval) {
+        color[0] = 0;
+        color[1] = 0;
+        color[2] = 127 + 127*d/interval;
+    }
+    else if(d < interval*3) {
+        color[0] = 0;
+        color[1] = 127*(d-interval)/interval;
+        color[2] = 255;
+    }
+    else if(d < interval*5) {
+        color[0] = 127*(d-3*interval)/interval;
+        color[1] = 255;
+        color[2] = 255 - 127*(d-3*interval)/interval;
+    }
+    else if(d < interval*7) {
+        color[0] = 255;
+        color[1] = 255 - 127*(d-5*interval)/interval;
+        color[2] = 0;
+    }
+    else {
+        color[0] = 255 - 127*(d-7*interval)/interval;
+        color[1] = 0;
+        color[2] = 0;
+    }
+}
+
 void draw(std::vector<std::pair<int, int>>& curve) {
     int n = 35;
     int length = 4095;
-    int scale = 5;
-    int left=50,top=50;
-    CImg<unsigned char> image("Pubic_Leiss.jpg"), visu(500,400,1,3,0);
-    const unsigned char color[] = { 255,128,64 };
+    int scale = 3;
+    int left=10,top=10;
+    CImg<unsigned char> image(400,400,1,3,0);
     for(int d = 0; d < curve.size()-1; d++) {
-//        const unsigned char color[] = { 255,255,255 };
-        visu.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale, color);
+        unsigned char color[3] = {0, 0, 0};
+        colorbar(d, curve.size(), color);
+        image.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale, color);
     }
-    CImgDisplay draw_disp(visu);
+    CImgDisplay draw_disp(image);
 
     while (!draw_disp.is_closed()) {
         draw_disp.wait();
     }
-//    for(int d = 0; d < curve.size()-1; d++) {
-////        setcolor(d*16 / length);
-//        setcolor(d % 16 + 1);
-//        line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale, top + curve[d+1].second * scale);
-//    }
 }
 
 int main()
 {
-//    int gd = DETECT,gm,left=100,top=100;
-//    initgraph(&gd,&gm,NULL);
-
     std::vector<std::pair<int, int>> curve = generate();
     draw(curve);
 
-//    delay(50000);
-//    closegraph();
     return 0;
 }
