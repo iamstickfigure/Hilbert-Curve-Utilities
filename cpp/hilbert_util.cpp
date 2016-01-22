@@ -5,19 +5,21 @@
 //#include<CImg.h>
 #include "CImg.h"
 #include "portaudio.h"
+#include "sndfile.hh"
+#include "sndfile.h"
 using namespace cimg_library;
 
 #define NUM_SECONDS   (50)
-#define SAMPLE_RATE   (8000)
-//#define SAMPLE_RATE   (44100)
+//#define SAMPLE_RATE   (8000)
+#define SAMPLE_RATE   (44100)
 #define FRAMES_PER_BUFFER  (64)
 
 #ifndef M_PI
 #define M_PI  (3.14159265)
 #endif
 
-#define TABLE_SIZE   (20000)
-//#define TABLE_SIZE   (2000000)
+//#define TABLE_SIZE   (20000)
+#define TABLE_SIZE   (200000)
 
 typedef struct
 {
@@ -193,11 +195,11 @@ void soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b,
     // SAMPLE_RATE samples per second
     // TABLE_SIZE total samples
     // Map the f values between 20 Hz to 20 kHz
-    // sin(x*2pi/(f*SAMPLE_RATE))
+    // sin(x*f*pi/(SAMPLE_RATE))
     float f = 20 + d*20000/max;
     float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
     for(int i = 0; i < TABLE_SIZE; ++i) {
-        data[i] += (float) sin(i * 2*M_PI / (f * SAMPLE_RATE)) * a;
+        data[i] += (float) sin(i * f * M_PI / (SAMPLE_RATE)) * a;
         if(data[i] == std::numeric_limits<float>::infinity())
             printf("data[%d] overflowed\n", i);
     }
@@ -212,7 +214,9 @@ void generateSound(CImg<unsigned char> &image, Path curve) {
         soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0), image(curve[d].first, curve[d].second, 1),
                  image(curve[d].first, curve[d].second, 2), sound.data);
     }
-    playSound(sound);
+    SndfileHandle file("out.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_FLOAT, 2, SAMPLE_RATE);
+    file.write(sound.data, TABLE_SIZE) ;
+//    playSound(sound);
 }
 
 // http://stackoverflow.com/questions/2374959/algorithm-to-convert-any-positive-integer-to-an-rgb-value
@@ -252,7 +256,7 @@ void draw(Path& curve) {
 //    CImg<unsigned char> image("color_bars_1121.jpg");//400,400,1,3,0);
     CImg<unsigned char> image("square_leiss256.jpg");//400,400,1,3,0);
 
-    generateSound(image, curve);
+//    generateSound(image, curve);
 
     for(int d = 0; d < curve.size()-1; d++) {
         unsigned char color[3] = {0, 0, 0};
