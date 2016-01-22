@@ -1,4 +1,6 @@
 #include<vector>
+#include<cmath>
+#include<limits>
 #include<math.h>
 //#include<CImg.h>
 #include "CImg.h"
@@ -175,7 +177,7 @@ typedef std::vector<std::pair<int, int>> Path;
 
 Path generate() {
     Path hilbert;
-    int nlog = 9;
+    int nlog = 8;
     int n = (int)pow(2, nlog);
     int length = n*n;
     int x, y;
@@ -194,15 +196,17 @@ void soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b,
     // sin(x*2pi/(f*SAMPLE_RATE))
     float f = 20 + d*20000/max;
     float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
-    for(int i = 0; i < TABLE_SIZE; i++) {
-        data[i] += (float) sin(i * 2*M_PI / (f * SAMPLE_RATE)) * a/max;
+    for(int i = 0; i < TABLE_SIZE; ++i) {
+        data[i] += (float) sin(i * 2*M_PI / (f * SAMPLE_RATE)) * a;
+        if(data[i] == std::numeric_limits<float>::infinity())
+            printf("data[%d] overflowed\n", i);
     }
 }
 
 void generateSound(CImg<unsigned char> &image, Path curve) {
     soundData sound = { {}, 0, 0, {} };
 //    printf("sound vals are: %f, %f, %f\n", sound.data[0], sound.data[5], sound.data[10]);
-    for(int d = 0; d < curve.size(); d++) {
+    for(int d = 0; d < curve.size(); ++d) {
         if(d % 10000 == 0)
             printf("%d out of %d\n", d, (int)curve.size());
         soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0), image(curve[d].first, curve[d].second, 1),
@@ -246,7 +250,7 @@ void draw(Path& curve) {
     int scale = 1;
     int left=0,top=0;
 //    CImg<unsigned char> image("color_bars_1121.jpg");//400,400,1,3,0);
-    CImg<unsigned char> image("square_leiss.jpg");//400,400,1,3,0);
+    CImg<unsigned char> image("square_leiss256.jpg");//400,400,1,3,0);
 
     generateSound(image, curve);
 
