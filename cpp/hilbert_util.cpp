@@ -10,8 +10,8 @@
 using namespace cimg_library;
 
 #define NUM_SECONDS   (50)
-//#define SAMPLE_RATE   (8000)
-#define SAMPLE_RATE   (44100)
+#define SAMPLE_RATE   (8000)
+//#define SAMPLE_RATE   (44100)
 #define FRAMES_PER_BUFFER  (64)
 
 #ifndef M_PI
@@ -191,28 +191,43 @@ Path generate() {
     return hilbert;
 }
 
-void soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b, float (&data)[TABLE_SIZE]) {
+float frequencyMap(int d, int max) {
+    return 20.0 + d*20000.0/max;
+}
+
+float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b, float (&data)[TABLE_SIZE]) {
     // SAMPLE_RATE samples per second
     // TABLE_SIZE total samples
     // Map the f values between 20 Hz to 20 kHz
     // sin(x*f*pi/(SAMPLE_RATE))
-    float f = 20 + d*20000/max;
+    float max_amp = 0;
+    float f = frequencyMap(d, max);
     float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
     for(int i = 0; i < TABLE_SIZE; ++i) {
         data[i] += (float) sin(i * f * M_PI / (SAMPLE_RATE)) * a;
+        if(data[i] > max_amp)
+            max_amp = data[i];
         if(data[i] == std::numeric_limits<float>::infinity())
             printf("data[%d] overflowed\n", i);
     }
+    return max_amp; // Returns the largest amplitude present
 }
 
 void generateSound(CImg<unsigned char> &image, Path curve) {
     soundData sound = { {}, 0, 0, {} };
+    float max_amp = 0;
 //    printf("sound vals are: %f, %f, %f\n", sound.data[0], sound.data[5], sound.data[10]);
     for(int d = 0; d < curve.size(); ++d) {
         if(d % 10000 == 0)
             printf("%d out of %d\n", d, (int)curve.size());
-        soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0), image(curve[d].first, curve[d].second, 1),
-                 image(curve[d].first, curve[d].second, 2), sound.data);
+        float max_amp_local = soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0),
+                                       image(curve[d].first, curve[d].second, 1),
+                                       image(curve[d].first, curve[d].second, 2), sound.data);
+        if(max_amp_local > max_amp)
+            max_amp = max_amp_local;
+    }
+    for(int i = 0; i < TABLE_SIZE; ++i) {
+        sound.data[i] /= max_amp;
     }
     SndfileHandle file("out.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_FLOAT, 2, SAMPLE_RATE);
     file.write(sound.data, TABLE_SIZE) ;
@@ -255,23 +270,31 @@ void draw(Path& curve) {
     int left=0,top=0;
 //    CImg<unsigned char> image("color_bars_1121.jpg");//400,400,1,3,0);
     CImg<unsigned char> image("square_leiss256.jpg");//400,400,1,3,0);
+    CImg<unsigned char> freq(400, 100, 1, 3, 0);
 
-//    generateSound(image, curve);
+    generateSound(image, curve);
 
-    for(int d = 0; d < curve.size()-1; d++) {
-        unsigned char color[3] = {0, 0, 0};
-        colorbar(d, curve.size(), color);
-        image.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale,
-                        top + curve[d+1].second * scale, color, 0.5);
-    }
+//    for(int d = 0; d < curve.size()-1; d++) {
+//        unsigned char color[3] = {0, 0, 0};
+//        colorbar(d, curve.size(), color);
+//        image.draw_line(left + curve[d].first * scale, top + curve[d].second * scale, left + curve[d+1].first * scale,
+//                        top + curve[d+1].second * scale, color, 0.5);
+//    }
     CImgDisplay draw_disp(image);
+    CImgDisplay freq_disp(freq);
+    const unsigned char color[] = { 255,255,255 };
 
     while (!draw_disp.is_closed()) {
-//        if (draw_disp.mouse_x()>=0 && draw_disp.mouse_y()>=0) { // Mouse pointer is over the image
-//
-//            const int x = draw_disp.mouse_x(), y = draw_disp.mouse_y();
+        if (draw_disp.mouse_x()>=0 && draw_disp.mouse_y()>=0) { // Mouse pointer is over the image
+
+            const int x = draw_disp.mouse_x(), y = draw_disp.mouse_y();
+            int d = xy2d((int)pow(2, 8), x, y);
+            char* message = new char[50];
+            sprintf(message, "(%d, %d) d=%d f=%fHz", x, y, d, frequencyMap(d, curve.size()));
+            freq.fill(0).draw_text(10, 10, message, color, 0, 0.8f, 24).display(freq_disp);
+
 //            printf("(%d, %d) - %d, %d, %d\n", x, y, image(x, y, 0), image(x, y, 1), image(x, y, 2));
-//        }
+        }
         draw_disp.wait();
     }
 }
