@@ -10,11 +10,13 @@
 using namespace cimg_library;
 
 #define NUM_SECONDS   (50)
-#define SAMPLE_RATE   (8000)
+//#define SAMPLE_RATE   (8000)
 #define SAMPLE_RATE   (44100)
 //#define SAMPLE_RATE   (88200)
 
 #define FRAMES_PER_BUFFER  (64)
+
+#define NUM_THREADS     (10)
 
 #define LOW_FREQUENCY   (110.0)
 #define HIGH_FREQUENCY  (1760.0)
@@ -28,8 +30,8 @@ using namespace cimg_library;
 #define M_PI  (3.14159265)
 #endif
 
-#define TABLE_SIZE   (20000)
-//#define TABLE_SIZE   (200000)
+//#define TABLE_SIZE   (20000)
+#define TABLE_SIZE   (200000)
 
 #ifdef SOUND_OUTPUT_ON
 typedef struct
@@ -233,12 +235,12 @@ float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b
     return max_amp; // Returns the largest amplitude present
 }
 
-void generateSound(CImg<unsigned char> &image, Path &curve) {
-    soundData sound = { {}, 0, 0, {} };
-    float max_amp = 0;
-    for(int d = 0; d < curve.size(); ++d) {
-        if(d % 10000 == 0)
-            printf("%d out of %d\n", d, (int)curve.size());
+void soundPartition(int t, Path &curve, CImg<unsigned char> &image, soundData &sound, float &max_amp, int &d) {
+//    float max_amp = 0;
+    int interval = curve.size() / NUM_THREADS;
+    for(d = interval*t; d < interval*(t+1); ++d) {
+//        if(d % 10000 == 0)
+//            printf("%d out of %d\n", d, (int)curve.size());
         float max_amp_local = soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0),
                                        image(curve[d].first, curve[d].second, 1),
                                        image(curve[d].first, curve[d].second, 2), sound.data);
@@ -246,6 +248,30 @@ void generateSound(CImg<unsigned char> &image, Path &curve) {
 //        float max_amp_local = (d==(int)curve.size()/100)?soundMap(d, curve.size(), 255, 255, 255, sound.data):0;
         if(max_amp_local > max_amp)
             max_amp = max_amp_local;
+    }
+}
+
+void generateSound(CImg<unsigned char> &image, Path &curve, int (&progress)[NUM_THREADS]) {
+    soundData sound = { {}, 0, 0, {} };
+    float max_amp = 0;
+    std::thread threads[NUM_THREADS];
+//    for(int d = 0; d < curve.size(); ++d) {
+//        if(d % 10000 == 0)
+//            printf("%d out of %d\n", d, (int)curve.size());
+//        float max_amp_local = soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0),
+//                                       image(curve[d].first, curve[d].second, 1),
+//                                       image(curve[d].first, curve[d].second, 2), sound.data);
+////        float max_amp_local = soundMap(d, curve.size(), 255, 255, 255, sound.data); // White test (Full on all frequencies)
+////        float max_amp_local = (d==(int)curve.size()/100)?soundMap(d, curve.size(), 255, 255, 255, sound.data):0;
+//        if(max_amp_local > max_amp)
+//            max_amp = max_amp_local;
+//    }
+    for(int t = 0; t < NUM_THREADS; ++t) {
+        threads[t] = std::thread(soundPartition, t, std::ref(curve), std::ref(image),
+                                 std::ref(sound), std::ref(max_amp), std::ref(progress[t]));
+    }
+    for(int t = 0; t < NUM_THREADS; ++t) {
+        threads[t].join();
     }
     for(int i = 0; i < TABLE_SIZE; ++i) {
         sound.data[i] /= max_amp;
@@ -291,10 +317,10 @@ void colorbar(int d, int max, unsigned char (&color)[3]) {
     }
 }
 
-void draw(Path& curve, CImg<unsigned char> &image) {
+void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS]) {
     int scale = 1;
     int left=0,top=0;
-    CImg<unsigned char> freq(400, 100, 1, 3, 0);
+    CImg<unsigned char> freq(400, 400, 1, 3, 0);
 
 //    for(int d = 0; d < curve.size()-1; d++) {
 //        unsigned char color[3] = {0, 0, 0};
@@ -307,15 +333,22 @@ void draw(Path& curve, CImg<unsigned char> &image) {
     const unsigned char color[] = { 255,255,255 };
 
     while (!draw_disp.is_closed()) {
+        freq.fill(0);
+        char* message = new char[50];
         if (draw_disp.mouse_x()>=0 && draw_disp.mouse_y()>=0) { // Mouse pointer is over the image
 
             const int x = draw_disp.mouse_x(), y = draw_disp.mouse_y();
             int d = xy2d((int)pow(2, 8), x, y);
-            char* message = new char[50];
-            sprintf(message, "(%d, %d) d=%d f=%fHz", x, y, d, frequencyMap(d, curve.size()));
-            freq.fill(0).draw_text(10, 10, message, color, 0, 0.8f, 24).display(freq_disp);
+            sprintf(message, "(%d, %d) d=%d f=%fHz\n", x, y, d, frequencyMap(d, curve.size()));
+            freq.draw_text(10, 10, message, color, 0, 0.8f, 24);
         }
-        draw_disp.wait();
+        int interval = curve.size() / NUM_THREADS;
+        for(int t = 0; t < NUM_THREADS; ++t) {
+            sprintf(message, "Thread %d: %4.2f%%\n", t, 100.0*(progress[t]-interval*t)/(float)interval);
+            freq.draw_text(10, 34 + 24*t, message, color, 0, 0.8f, 24);
+        }
+        freq.display(freq_disp);
+//        draw_disp.wait();
     }
 }
 #endif
@@ -324,15 +357,18 @@ int main() {
     Path curve = generate();
     CImg<unsigned char> image("color_bars_256.jpg");
 //    CImg<unsigned char> image("square_leiss256.jpg");
+
+    int progress[NUM_THREADS];
+
     #ifdef SOUND_OUTPUT_ON
         #ifdef GRAPHICS_ON
-            std::thread sounds(generateSound, std::ref(image), std::ref(curve));
-            std::thread graphics(draw, std::ref(curve), std::ref(image));
+            std::thread graphics(draw, std::ref(curve), std::ref(image), std::ref(progress));
+            std::thread sounds(generateSound, std::ref(image), std::ref(curve), std::ref(progress));
 
             sounds.join();
             graphics.join();
         #else
-            generateSound(image, curve);
+            generateSound(image, curve, progress);
         #endif
     #else
     #ifdef GRAPHICS_ON
