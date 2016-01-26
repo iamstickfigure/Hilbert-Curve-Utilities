@@ -2,6 +2,7 @@
 #include<cmath>
 #include<limits>
 #include<math.h>
+#include<thread>
 #include "CImg.h"
 #include "portaudio.h"
 #include "sndfile.hh"
@@ -9,26 +10,28 @@
 using namespace cimg_library;
 
 #define NUM_SECONDS   (50)
-//#define SAMPLE_RATE   (8000)
-//#define SAMPLE_RATE   (88200)
+#define SAMPLE_RATE   (8000)
 #define SAMPLE_RATE   (44100)
+//#define SAMPLE_RATE   (88200)
+
 #define FRAMES_PER_BUFFER  (64)
 
 #define LOW_FREQUENCY   (110.0)
 #define HIGH_FREQUENCY  (1760.0)
+// 20.0 to 20000.0   or  110.0 to 1760.0
 
-//#define GRAPHICS_ON   // Comment out to turn off graphics
+#define GRAPHICS_ON   // Comment out to turn off graphics
 #define SOUND_OUTPUT_ON   // Comment out to turn off all sound output
 //#define VERBOSE
-
 
 #ifndef M_PI
 #define M_PI  (3.14159265)
 #endif
 
-//#define TABLE_SIZE   (20000)
-#define TABLE_SIZE   (200000)
+#define TABLE_SIZE   (20000)
+//#define TABLE_SIZE   (200000)
 
+#ifdef SOUND_OUTPUT_ON
 typedef struct
 {
     float data[TABLE_SIZE];
@@ -135,6 +138,8 @@ int playSound(soundData& sound) {
     return err;
 }
 
+#endif
+
 /*
  * https://en.wikipedia.org/wiki/Hilbert_curve
  *
@@ -200,8 +205,6 @@ Path generate() {
 }
 
 float frequencyMap(int d, int max) {
-//    return 20.0 + d*20000.0/max;
-//    return 110.0 + d*1760.0/max;
     return LOW_FREQUENCY + d*HIGH_FREQUENCY/max;
 }
 
@@ -214,7 +217,6 @@ float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b
     // sin(x*f*pi/(SAMPLE_RATE))
     float max_amp = 0;
     float f = frequencyMap(d, max);
-//    float f = 200.0;
     float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
     for(int i = 0; i < TABLE_SIZE; ++i) {
         data[i] += (float) sin((i-10000) * f * M_PI / (SAMPLE_RATE)) * a;
@@ -224,17 +226,16 @@ float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b
             printf("data[%d] overflowed\n", i);
     }
 
-#ifdef VERBOSE
-    printf("Frequency: %f Hz    Amplitude: %f\n", f, a);
-#endif
+    #ifdef VERBOSE
+        printf("Frequency: %f Hz    Amplitude: %f\n", f, a);
+    #endif
 
     return max_amp; // Returns the largest amplitude present
 }
 
-void generateSound(CImg<unsigned char> &image, Path curve) {
+void generateSound(CImg<unsigned char> &image, Path &curve) {
     soundData sound = { {}, 0, 0, {} };
     float max_amp = 0;
-//    printf("sound vals are: %f, %f, %f\n", sound.data[0], sound.data[5], sound.data[10]);
     for(int d = 0; d < curve.size(); ++d) {
         if(d % 10000 == 0)
             printf("%d out of %d\n", d, (int)curve.size());
@@ -313,8 +314,6 @@ void draw(Path& curve, CImg<unsigned char> &image) {
             char* message = new char[50];
             sprintf(message, "(%d, %d) d=%d f=%fHz", x, y, d, frequencyMap(d, curve.size()));
             freq.fill(0).draw_text(10, 10, message, color, 0, 0.8f, 24).display(freq_disp);
-
-//            printf("(%d, %d) - %d, %d, %d\n", x, y, image(x, y, 0), image(x, y, 1), image(x, y, 2));
         }
         draw_disp.wait();
     }
@@ -323,15 +322,23 @@ void draw(Path& curve, CImg<unsigned char> &image) {
 
 int main() {
     Path curve = generate();
-    CImg<unsigned char> image("color_bars_256.jpg");//400,400,1,3,0);
-//    CImg<unsigned char> image("square_leiss256.jpg");//400,400,1,3,0);
-#ifdef SOUND_OUTPUT_ON
-    generateSound(image, curve);
-#endif
+    CImg<unsigned char> image("color_bars_256.jpg");
+//    CImg<unsigned char> image("square_leiss256.jpg");
+    #ifdef SOUND_OUTPUT_ON
+        #ifdef GRAPHICS_ON
+            std::thread sounds(generateSound, std::ref(image), std::ref(curve));
+            std::thread graphics(draw, std::ref(curve), std::ref(image));
 
-#ifdef GRAPHICS_ON
-    draw(curve, image);
-#endif
+            sounds.join();
+            graphics.join();
+        #else
+            generateSound(image, curve);
+        #endif
+    #else
+    #ifdef GRAPHICS_ON
+        draw(curve, image);
+    #endif
+    #endif
 
     return 0;
 }
