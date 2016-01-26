@@ -2,7 +2,6 @@
 #include<cmath>
 #include<limits>
 #include<math.h>
-//#include<CImg.h>
 #include "CImg.h"
 #include "portaudio.h"
 #include "sndfile.hh"
@@ -10,9 +9,18 @@
 using namespace cimg_library;
 
 #define NUM_SECONDS   (50)
-#define SAMPLE_RATE   (8000)
-//#define SAMPLE_RATE   (44100)
+//#define SAMPLE_RATE   (8000)
+//#define SAMPLE_RATE   (88200)
+#define SAMPLE_RATE   (44100)
 #define FRAMES_PER_BUFFER  (64)
+
+#define LOW_FREQUENCY   (110.0)
+#define HIGH_FREQUENCY  (1760.0)
+
+//#define GRAPHICS_ON   // Comment out to turn off graphics
+#define SOUND_OUTPUT_ON   // Comment out to turn off all sound output
+//#define VERBOSE
+
 
 #ifndef M_PI
 #define M_PI  (3.14159265)
@@ -192,24 +200,34 @@ Path generate() {
 }
 
 float frequencyMap(int d, int max) {
-    return 20.0 + d*20000.0/max;
+//    return 20.0 + d*20000.0/max;
+//    return 110.0 + d*1760.0/max;
+    return LOW_FREQUENCY + d*HIGH_FREQUENCY/max;
 }
+
+#ifdef SOUND_OUTPUT_ON  // If sound output is off, don't compile this
 
 float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b, float (&data)[TABLE_SIZE]) {
     // SAMPLE_RATE samples per second
     // TABLE_SIZE total samples
-    // Map the f values between 20 Hz to 20 kHz
+    // Map the f values between 20 Hz to 20 kHz (Maybe 110 to 1760 instead?)
     // sin(x*f*pi/(SAMPLE_RATE))
     float max_amp = 0;
     float f = frequencyMap(d, max);
+//    float f = 200.0;
     float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
     for(int i = 0; i < TABLE_SIZE; ++i) {
-        data[i] += (float) sin(i * f * M_PI / (SAMPLE_RATE)) * a;
+        data[i] += (float) sin((i-10000) * f * M_PI / (SAMPLE_RATE)) * a;
         if(data[i] > max_amp)
             max_amp = data[i];
         if(data[i] == std::numeric_limits<float>::infinity())
             printf("data[%d] overflowed\n", i);
     }
+
+#ifdef VERBOSE
+    printf("Frequency: %f Hz    Amplitude: %f\n", f, a);
+#endif
+
     return max_amp; // Returns the largest amplitude present
 }
 
@@ -223,6 +241,8 @@ void generateSound(CImg<unsigned char> &image, Path curve) {
         float max_amp_local = soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0),
                                        image(curve[d].first, curve[d].second, 1),
                                        image(curve[d].first, curve[d].second, 2), sound.data);
+//        float max_amp_local = soundMap(d, curve.size(), 255, 255, 255, sound.data); // White test (Full on all frequencies)
+//        float max_amp_local = (d==(int)curve.size()/100)?soundMap(d, curve.size(), 255, 255, 255, sound.data):0;
         if(max_amp_local > max_amp)
             max_amp = max_amp_local;
     }
@@ -231,11 +251,16 @@ void generateSound(CImg<unsigned char> &image, Path curve) {
     }
     SndfileHandle file("out.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_FLOAT, 2, SAMPLE_RATE);
     file.write(sound.data, TABLE_SIZE) ;
-//    playSound(sound);
+    playSound(sound);
 }
+
+#endif
 
 // http://stackoverflow.com/questions/2374959/algorithm-to-convert-any-positive-integer-to-an-rgb-value
 // Based off of the graph provided.
+
+#ifdef GRAPHICS_ON // If graphics are turned off, don't compile this.
+
 void colorbar(int d, int max, unsigned char (&color)[3]) {
     int interval = max/8;
     if(d < interval) {
@@ -265,14 +290,10 @@ void colorbar(int d, int max, unsigned char (&color)[3]) {
     }
 }
 
-void draw(Path& curve) {
+void draw(Path& curve, CImg<unsigned char> &image) {
     int scale = 1;
     int left=0,top=0;
-//    CImg<unsigned char> image("color_bars_1121.jpg");//400,400,1,3,0);
-    CImg<unsigned char> image("square_leiss256.jpg");//400,400,1,3,0);
     CImg<unsigned char> freq(400, 100, 1, 3, 0);
-
-    generateSound(image, curve);
 
 //    for(int d = 0; d < curve.size()-1; d++) {
 //        unsigned char color[3] = {0, 0, 0};
@@ -298,10 +319,19 @@ void draw(Path& curve) {
         draw_disp.wait();
     }
 }
+#endif
 
 int main() {
     Path curve = generate();
-    draw(curve);
+    CImg<unsigned char> image("color_bars_256.jpg");//400,400,1,3,0);
+//    CImg<unsigned char> image("square_leiss256.jpg");//400,400,1,3,0);
+#ifdef SOUND_OUTPUT_ON
+    generateSound(image, curve);
+#endif
+
+#ifdef GRAPHICS_ON
+    draw(curve, image);
+#endif
 
     return 0;
 }
