@@ -9,6 +9,8 @@
 #include "sndfile.h"
 using namespace cimg_library;
 
+#define LOG_N       (9)
+
 #define NUM_SECONDS   (50)
 //#define SAMPLE_RATE   (8000)
 #define SAMPLE_RATE   (44100)
@@ -18,7 +20,7 @@ using namespace cimg_library;
 
 #define NUM_THREADS     (10)
 
-#define LOW_FREQUENCY   (110.0)
+#define LOW_FREQUENCY   (500.0)
 #define HIGH_FREQUENCY  (1760.0)
 // 20.0 to 20000.0   or  110.0 to 1760.0
 
@@ -194,8 +196,7 @@ typedef std::vector<std::pair<int, int>> Path;
 
 Path generate() {
     Path hilbert;
-    int nlog = 8;
-    int n = (int)pow(2, nlog);
+    int n = (int)pow(2, LOG_N);
     int length = n*n;
     int x, y;
 
@@ -206,48 +207,119 @@ Path generate() {
     return hilbert;
 }
 
+typedef struct {
+    float h,s,v;
+} hsv_t;
+
+hsv_t rgb_to_hsv(int R, int G, int B) {
+    using std::max;
+    using std::min;
+    float h, s, v, r = R/255.0, g = G/255.0, b = B/255.0;
+    float cmax = max(max(r, g), b);
+    float cmin = min(min(r, g), b);
+    float cdelta = cmax - cmin;
+
+    if(R == G && G == B)
+        h = 0;
+    else if(r > b) {
+        if(r > g) // cmax == r
+            h = 60.0*fmod((g-b)/cdelta, 6);
+        else // cmax == g
+            h = 60.0*((b-r)/cdelta + 2);
+    }
+    else // cmax == b
+        h = 60.0*((r-g)/cdelta + 4);
+
+    if(R == 0 && G == 0 && B == 0) // All of them are zero
+        s = 0;
+    else
+        s = cdelta/cmax;
+
+    v = cmax;
+
+    return hsv_t{h, s, v};
+}
+
 float frequencyMap(int d, int max) {
     return LOW_FREQUENCY + d*HIGH_FREQUENCY/max;
 }
 
+float frequencySaturationMap(float s) {
+    return LOW_FREQUENCY + s*HIGH_FREQUENCY;
+}
+
 #ifdef SOUND_OUTPUT_ON  // If sound output is off, don't compile this
 
-float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b, float (&data)[TABLE_SIZE]) {
-    // SAMPLE_RATE samples per second
-    // TABLE_SIZE total samples
-    // Map the f values between 20 Hz to 20 kHz (Maybe 110 to 1760 instead?)
-    // sin(x*f*pi/(SAMPLE_RATE))
+
+//float soundMap(int d, int max, unsigned char r, unsigned char g, unsigned char b, float (&data)[TABLE_SIZE]) {
+//    // SAMPLE_RATE samples per second
+//    // TABLE_SIZE total samples
+//    // Map the f values between 20 Hz to 20 kHz (Maybe 110 to 1760 instead?)
+//    // sin(x*f*pi/(SAMPLE_RATE))
+//    float max_amp = 0;
+//    float f = frequencyMap(d, max));
+//    float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
+//    for(int i = 0; i < TABLE_SIZE; ++i) {
+//        data[i] += (float) sin((i-10000) * f * M_PI / (SAMPLE_RATE)) * a;
+//        if(data[i] > max_amp)
+//            max_amp = data[i];
+//        if(data[i] == std::numeric_limits<float>::infinity())
+//            printf("data[%d] overflowed\n", i);
+//    }
+//
+//    #ifdef VERBOSE
+//        printf("Frequency: %f Hz    Amplitude: %f\n", f, a);
+//    #endif
+//
+//    return max_amp; // Returns the largest amplitude present
+//}
+
+//void soundPartition(int t, Path &curve, CImg<unsigned char> &image, soundData &sound, float &max_amp, int &d) {
+//    int interval = curve.size() / NUM_THREADS;
+//    for(d = interval*t; d < interval*(t+1); ++d) {
+//        float max_amp_local = soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0),
+//                                       image(curve[d].first, curve[d].second, 1),
+//                                       image(curve[d].first, curve[d].second, 2), sound.data);
+////        float max_amp_local = soundMap(d, curve.size(), 255, 255, 255, sound.data); // White test (Full on all frequencies)
+////        float max_amp_local = (d==(int)curve.size()/100)?soundMap(d, curve.size(), 255, 255, 255, sound.data):0;
+//        if(max_amp_local > max_amp)
+//            max_amp = max_amp_local;
+//    }
+//}
+
+float pulse(int location, float f, float a, float width, float (&data)[TABLE_SIZE]) {
+    // high frequency sine (f) * (low frequency sine + 1)
     float max_amp = 0;
-    float f = frequencyMap(d, max);
-    float a = sqrt(pow(r,2) + pow(g,2) + pow(b,2))/255.0;
-    for(int i = 0; i < TABLE_SIZE; ++i) {
-        data[i] += (float) sin((i-10000) * f * M_PI / (SAMPLE_RATE)) * a;
+    int offset = 0;
+    for (int i = (int)((location > width/2)?(location-width/2):0); i < (int)width/2+location && i < TABLE_SIZE; ++i) {
+        data[i] += (float) sin((i-offset) * f * M_PI / (SAMPLE_RATE)) * a * (cos(2*M_PI*i/width)+1)/2;
         if(data[i] > max_amp)
             max_amp = data[i];
         if(data[i] == std::numeric_limits<float>::infinity())
             printf("data[%d] overflowed\n", i);
     }
-
-    #ifdef VERBOSE
-        printf("Frequency: %f Hz    Amplitude: %f\n", f, a);
-    #endif
-
-    return max_amp; // Returns the largest amplitude present
+    return max_amp;
 }
 
-void soundPartition(int t, Path &curve, CImg<unsigned char> &image, soundData &sound, float &max_amp, int &d) {
-//    float max_amp = 0;
+float pulsePartition(int t, Path &curve, CImg<unsigned char> &image, soundData &sound, float &max_amp, int &d) {
     int interval = curve.size() / NUM_THREADS;
+    float f, a, local_max = 0;
+    int location, r, g, b;
+    hsv_t hsv;
+
     for(d = interval*t; d < interval*(t+1); ++d) {
-//        if(d % 10000 == 0)
-//            printf("%d out of %d\n", d, (int)curve.size());
-        float max_amp_local = soundMap(d, curve.size(), image(curve[d].first, curve[d].second, 0),
-                                       image(curve[d].first, curve[d].second, 1),
-                                       image(curve[d].first, curve[d].second, 2), sound.data);
-//        float max_amp_local = soundMap(d, curve.size(), 255, 255, 255, sound.data); // White test (Full on all frequencies)
-//        float max_amp_local = (d==(int)curve.size()/100)?soundMap(d, curve.size(), 255, 255, 255, sound.data):0;
-        if(max_amp_local > max_amp)
-            max_amp = max_amp_local;
+        r = image(curve[d].first, curve[d].second, 0);
+        g = image(curve[d].first, curve[d].second, 1);
+        b = image(curve[d].first, curve[d].second, 2);
+        hsv = rgb_to_hsv(r, g, b);
+        f = frequencySaturationMap(hsv.s);
+        a = sqrt(pow(r,2) + pow(g,2) + pow(b,2));
+//        f = frequencySaturationMap(1.0); // Max saturation test
+//        a = sqrt(pow(255,2) + pow(255,2) + pow(255,2));  // White test
+        location = (int)(d*(float)TABLE_SIZE/(float)curve.size());
+        local_max = pulse(location, f, a, 1000, sound.data);
+        if(local_max > max_amp)
+            max_amp = local_max;
     }
 }
 
@@ -267,7 +339,9 @@ void generateSound(CImg<unsigned char> &image, Path &curve, int (&progress)[NUM_
 //            max_amp = max_amp_local;
 //    }
     for(int t = 0; t < NUM_THREADS; ++t) {
-        threads[t] = std::thread(soundPartition, t, std::ref(curve), std::ref(image),
+//        threads[t] = std::thread(soundPartition, t, std::ref(curve), std::ref(image),
+//                                 std::ref(sound), std::ref(max_amp), std::ref(progress[t]));
+        threads[t] = std::thread(pulsePartition, t, std::ref(curve), std::ref(image),
                                  std::ref(sound), std::ref(max_amp), std::ref(progress[t]));
     }
     for(int t = 0; t < NUM_THREADS; ++t) {
@@ -338,8 +412,9 @@ void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS])
         if (draw_disp.mouse_x()>=0 && draw_disp.mouse_y()>=0) { // Mouse pointer is over the image
 
             const int x = draw_disp.mouse_x(), y = draw_disp.mouse_y();
-            int d = xy2d((int)pow(2, 8), x, y);
-            sprintf(message, "(%d, %d) d=%d f=%fHz\n", x, y, d, frequencyMap(d, curve.size()));
+            int d = xy2d((int)pow(2, LOG_N), x, y);
+            hsv_t hsv = rgb_to_hsv(image(x, y, 0), image(x, y, 1), image(x, y, 2));
+            sprintf(message, "(%d, %d) d=%d hsv=%4.2f,%4.2f,%4.2f f=%4.2fHz\n", x, y, d, hsv.h, hsv.s, hsv.v, frequencyMap(d, curve.size()));
             freq.draw_text(10, 10, message, color, 0, 0.8f, 24);
         }
         int interval = curve.size() / NUM_THREADS;
@@ -348,15 +423,14 @@ void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS])
             freq.draw_text(10, 34 + 24*t, message, color, 0, 0.8f, 24);
         }
         freq.display(freq_disp);
-//        draw_disp.wait();
     }
 }
 #endif
 
 int main() {
     Path curve = generate();
-    CImg<unsigned char> image("color_bars_256.jpg");
-//    CImg<unsigned char> image("square_leiss256.jpg");
+//    CImg<unsigned char> image("color_bars_512.jpg");
+    CImg<unsigned char> image("square_leiss.jpg");
 
     int progress[NUM_THREADS];
 
