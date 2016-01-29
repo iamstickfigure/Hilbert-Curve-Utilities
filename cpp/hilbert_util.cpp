@@ -3,6 +3,7 @@
 #include<limits>
 #include<math.h>
 #include<thread>
+#include<iostream>
 #include "CImg.h"
 #include "portaudio.h"
 #include "sndfile.hh"
@@ -512,32 +513,36 @@ void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS])
 }
 #endif
 
-int main() {
-    Path curve = generate();
-    CImg<unsigned char> image("ember512_de-hued.jpg");
-//    CImg<unsigned char> image("ember512.jpg");
-//    CImg<unsigned char> image("dikachu512.jpg");
-//    CImg<unsigned char> image("red512.png");
-//    CImg<unsigned char> image("color_bars_512.jpg");
-//    CImg<unsigned char> image("square_leiss.jpg");
+int main(int argc, char *argv[]) {
+    if ( argc != 2 )
+        std::cout<<"usage: "<< argv[0] <<" <filename>\n";
+    else {
+        Path curve = generate();
+        CImg<unsigned char> image(argv[1]);
+        //    CImg<unsigned char> image("ember512.jpg");
+        //    CImg<unsigned char> image("dikachu512.jpg");
+        //    CImg<unsigned char> image("red512.png");
+        //    CImg<unsigned char> image("color_bars_512.jpg");
+        //    CImg<unsigned char> image("square_leiss.jpg");
 
-    int progress[NUM_THREADS];
+        int progress[NUM_THREADS];
 
-    #ifdef SOUND_OUTPUT_ON
-        #ifdef GRAPHICS_ON
-            std::thread graphics(draw, std::ref(curve), std::ref(image), std::ref(progress));
-            std::thread sounds(generateSound, std::ref(image), std::ref(curve), std::ref(progress));
+        #ifdef SOUND_OUTPUT_ON
+            #ifdef GRAPHICS_ON
+                    std::thread graphics(draw, std::ref(curve), std::ref(image), std::ref(progress));
+                    std::thread sounds(generateSound, std::ref(image), std::ref(curve), std::ref(progress));
 
-            sounds.join();
-            graphics.join();
+                    sounds.join();
+                    graphics.join();
+            #else
+                    generateSound(image, curve, progress);
+            #endif
         #else
-            generateSound(image, curve, progress);
+        #ifdef GRAPHICS_ON
+                draw(curve, image);
         #endif
-    #else
-    #ifdef GRAPHICS_ON
-        draw(curve, image);
-    #endif
-    #endif
+        #endif
+    }
 
     return 0;
 }
