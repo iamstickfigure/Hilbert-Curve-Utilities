@@ -372,11 +372,11 @@ float pulse(int location, color_t color, float f, float a, float width, float (&
     // high frequency sine (f) * (low frequency sine + 1)
     float max_amp = 0;
     int offset = 0;
-//    location = 5000; // Test pulse
+//    location = 5150; // Test pulse
 //    f = 1000; // Test fequency/amplitude
 //    a = 1;
     for (int i = (int)((location > width/2)?(location-width/2):0); i < (int)width/2+location && i < TABLE_SIZE; ++i) {
-        data[i] += audioFunction(color, i-offset, f, a) * (cos(2*M_PI*i/width)+1)/2;
+        data[i] += audioFunction(color, i-offset, f, a) * (cos(2*M_PI*(i-location)/width)+1)/2;
         if(data[i] > max_amp)
             max_amp = data[i];
         if(data[i] == std::numeric_limits<float>::infinity())
@@ -401,7 +401,7 @@ float pulsePartition(int t, Path &curve, CImg<unsigned char> &image, soundData &
 //        f = frequencySaturationMap(1.0); // Max saturation test
 //        a = sqrt(pow(255,2) + pow(255,2) + pow(255,2));  // White test
         location = (int)(d*(float)TABLE_SIZE/(float)curve.size());
-//        if(d == 0) // Test pulse
+//        if(d == 0) // Test pulse          ==== PLEASE COMMENT OUT WHEN NOT USING ====
         local_max = pulse(location, hsv, f, a, 1000, sound.data);
         if(local_max > max_amp)
             max_amp = local_max;
@@ -514,8 +514,8 @@ void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS])
 
 int main() {
     Path curve = generate();
-//    CImg<unsigned char> image("ember512_de-hued.jpg");
-    CImg<unsigned char> image("ember512.jpg");
+    CImg<unsigned char> image("ember512_de-hued.jpg");
+//    CImg<unsigned char> image("ember512.jpg");
 //    CImg<unsigned char> image("dikachu512.jpg");
 //    CImg<unsigned char> image("red512.png");
 //    CImg<unsigned char> image("color_bars_512.jpg");
