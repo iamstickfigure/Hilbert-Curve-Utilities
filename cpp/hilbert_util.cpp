@@ -209,9 +209,10 @@ Path generate() {
 
 typedef struct {
     float h,s,v;
-} hsv_t;
+    int r,g,b;
+} color_t;
 
-hsv_t rgb_to_hsv(int R, int G, int B) {
+color_t rgb_to_hsv(int R, int G, int B) {
     using std::max;
     using std::min;
     float h, s, v, r = R/255.0, g = G/255.0, b = B/255.0;
@@ -237,7 +238,7 @@ hsv_t rgb_to_hsv(int R, int G, int B) {
 
     v = cmax;
 
-    return hsv_t{h, s, v};
+    return color_t{h, s, v, R, G, B};
 }
 
 float frequencyMap(int d, int max) {
@@ -287,12 +288,95 @@ float frequencySaturationMap(float s) {
 //    }
 //}
 
-float pulse(int location, float f, float a, float width, float (&data)[TABLE_SIZE]) {
+//typedef float(*fptr)();
+
+float sine_wave(int i, float f, float a) {
+    return a * sin(i * f * M_PI / SAMPLE_RATE);
+}
+
+float square_wave(int i, float f, float a) {
+    return a * (sin(i * f * M_PI / SAMPLE_RATE) > 0)?1.0:-1.0;
+}
+
+float saw_wave(int i, float f, float a) {
+    return a * (fmod(i * f / SAMPLE_RATE - 0.5, 2.0) - 1);
+}
+
+//fptr audioFunctionMap(char c) {
+//    if(c == 'r')
+//        return sine_wave;
+//    else if(c == 'g')
+//        return sine_wave;
+//    else if(c == 'b')
+//        return sine_wave;
+//}
+
+float audioFunction(color_t color, int i, float f, float a) {
+    float result = 0;
+    float hue = color.h;
+    float coeff = 0;
+//    float r_func = audioFunctionMap('r')(i, f, a);
+//    float g_func = audioFunctionMap('g')(i, f, a);
+//    float b_func = audioFunctionMap('b')(i, f, a);
+    float r_func = sine_wave(i, f, a);
+    float g_func = square_wave(i, f, a);
+    float b_func = saw_wave(i, f, a);
+
+    if(r_func == g_func && g_func == b_func)
+        return r_func;
+//    else
+//        printf("No bypass with %4.2f\n", r_func);
+
+    if(hue < 60) {
+        coeff = hue/60;
+        result = r_func; // Full red, rising green
+        result += g_func * coeff; // rising green
+        result /= 1+coeff;
+    }
+    else if(hue < 180) {
+        result = g_func; // Full green
+        if(hue < 120) {
+            coeff = 1 - (hue - 60) / 60;
+            result += r_func * coeff; // waning red
+            result /= 1+coeff;
+        }
+        else {
+            coeff = (hue - 120) / 60;
+            result += b_func * coeff; // rising blue
+            result /= 1+coeff;
+        }
+    }
+    else if(hue < 300) {
+        result = b_func; // Full blue
+        if(hue < 240) {
+            coeff = 1 - (hue - 180)/60;
+            result += g_func * coeff; // waning green
+            result /= 1+coeff;
+        }
+        else {
+            coeff = (hue - 240)/60;
+            result += r_func * coeff; // rising red
+            result /= 1+coeff;
+        }
+    }
+    else {
+        coeff = 1 - (hue - 300)/60;
+        result = r_func; // Full red, waning blue
+        result += b_func * coeff; // Waning blue
+        result /= 1+coeff;
+    }
+    return result;
+}
+
+float pulse(int location, color_t color, float f, float a, float width, float (&data)[TABLE_SIZE]) {
     // high frequency sine (f) * (low frequency sine + 1)
     float max_amp = 0;
     int offset = 0;
+//    location = 5000; // Test pulse
+//    f = 1000; // Test fequency/amplitude
+//    a = 1;
     for (int i = (int)((location > width/2)?(location-width/2):0); i < (int)width/2+location && i < TABLE_SIZE; ++i) {
-        data[i] += (float) sin((i-offset) * f * M_PI / (SAMPLE_RATE)) * a * (cos(2*M_PI*i/width)+1)/2;
+        data[i] += audioFunction(color, i-offset, f, a) * (cos(2*M_PI*i/width)+1)/2;
         if(data[i] > max_amp)
             max_amp = data[i];
         if(data[i] == std::numeric_limits<float>::infinity())
@@ -305,7 +389,7 @@ float pulsePartition(int t, Path &curve, CImg<unsigned char> &image, soundData &
     int interval = curve.size() / NUM_THREADS;
     float f, a, local_max = 0;
     int location, r, g, b;
-    hsv_t hsv;
+    color_t hsv;
 
     for(d = interval*t; d < interval*(t+1); ++d) {
         r = image(curve[d].first, curve[d].second, 0);
@@ -317,7 +401,8 @@ float pulsePartition(int t, Path &curve, CImg<unsigned char> &image, soundData &
 //        f = frequencySaturationMap(1.0); // Max saturation test
 //        a = sqrt(pow(255,2) + pow(255,2) + pow(255,2));  // White test
         location = (int)(d*(float)TABLE_SIZE/(float)curve.size());
-        local_max = pulse(location, f, a, 1000, sound.data);
+//        if(d == 0) // Test pulse
+        local_max = pulse(location, hsv, f, a, 1000, sound.data);
         if(local_max > max_amp)
             max_amp = local_max;
     }
@@ -350,7 +435,7 @@ void generateSound(CImg<unsigned char> &image, Path &curve, int (&progress)[NUM_
     for(int i = 0; i < TABLE_SIZE; ++i) {
         sound.data[i] /= max_amp;
     }
-    SndfileHandle file("out.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_FLOAT, 2, SAMPLE_RATE);
+    SndfileHandle file("out.wav", SFM_WRITE, SF_FORMAT_WAV | SF_FORMAT_FLOAT, 1, SAMPLE_RATE);
     file.write(sound.data, TABLE_SIZE) ;
     playSound(sound);
 }
@@ -413,7 +498,7 @@ void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS])
 
             const int x = draw_disp.mouse_x(), y = draw_disp.mouse_y();
             int d = xy2d((int)pow(2, LOG_N), x, y);
-            hsv_t hsv = rgb_to_hsv(image(x, y, 0), image(x, y, 1), image(x, y, 2));
+            color_t hsv = rgb_to_hsv(image(x, y, 0), image(x, y, 1), image(x, y, 2));
             sprintf(message, "(%d, %d) d=%d hsv=%4.2f,%4.2f,%4.2f f=%4.2fHz\n", x, y, d, hsv.h, hsv.s, hsv.v, frequencyMap(d, curve.size()));
             freq.draw_text(10, 10, message, color, 0, 0.8f, 24);
         }
@@ -429,8 +514,12 @@ void draw(Path& curve, CImg<unsigned char> &image, int (&progress)[NUM_THREADS])
 
 int main() {
     Path curve = generate();
+//    CImg<unsigned char> image("ember512_de-hued.jpg");
+    CImg<unsigned char> image("ember512.jpg");
+//    CImg<unsigned char> image("dikachu512.jpg");
+//    CImg<unsigned char> image("red512.png");
 //    CImg<unsigned char> image("color_bars_512.jpg");
-    CImg<unsigned char> image("square_leiss.jpg");
+//    CImg<unsigned char> image("square_leiss.jpg");
 
     int progress[NUM_THREADS];
 
